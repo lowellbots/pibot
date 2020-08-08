@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>romi_ros</name>
+  <version>0.0.1</version>
+  <description>The romi_ros package</description>
+
+  <maintainer email="powers.bradley@gmail.com">Brad Powers</maintainer>
+  <author email="powers.bradley@gmail.com">Brad Powers</author>
+  <author email="daniel.g.dugmore@gmail.com">Daniel Dugmore</author>
+
+
+  <license>MIT</license>
+
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <build_depend>geometry_msgs</build_depend>
+  <build_depend>nav_msgs</build_depend>
+  <build_depend>rospy</build_depend>
+  <build_depend>sensor_msgs</build_depend>
+  <build_depend>tf2</build_depend>
+  <build_export_depend>geometry_msgs</build_export_depend>
+  <build_export_depend>nav_msgs</build_export_depend>
+  <build_export_depend>rospy</build_export_depend>
+  <build_export_depend>sensor_msgs</build_export_depend>
+  <build_export_depend>tf2</build_export_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>rospy</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>tf2</exec_depend>
+  <exec_depend condition="$ROS_PYTHON_VERSION == 3">python3-smbus</exec_depend>
+
+</package>
