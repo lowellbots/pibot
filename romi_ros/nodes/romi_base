@@ -6,6 +6,7 @@ import rospy
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from std_msgs.msg import Float32
+from tf.transformations import quaternion_from_euler
 
 from romi_ros import Romi
 
@@ -16,15 +17,12 @@ def callback(msg):
     rospy.loginfo("Received Twist:\n\r%s", msg)
     #do math, make motors spin
 
-def integrateOdometry(linear, angular):
-    if abs(angular) < 1e-6:
-
 
 def main():
     nh = rospy.init_node('romi_base')
     rospy.on_shutdown(shutdown_hook)
 
-    rate = rospy.Rate(20) #20Hz
+    rate = rospy.Rate(5) #20Hz
 
     base_frame_id = rospy.get_param('base/frame_id', 'base_link')
     wheel_diameter = rospy.get_param('base/wheel_diameter', 0.07) #wheel_diameter in meters
@@ -41,55 +39,107 @@ def main():
     cmd_vel_sub = rospy.Subscriber("cmd_vel", Twist, callback)
     odom_pub = rospy.Publisher("odom", Odometry, queue_size=1) 
 
-    r = Romi()
-    r.reset_encoders()
-    r.beepBoop()
+    romi = Romi()
+    romi.reset_encoders()
+    romi.beepBoop()
 
-    t_old = rospy.Time.now()
+    t_old = None
     left_wheel_old_pos = 0
     right_wheel_old_pos = 0
 
-    while not rospy.is_shutdown():
-        #should probably also publish battery voltage here....
+    x = 0
+    y = 0
+    heading = 0
 
+    io_error=3
+
+    while not rospy.is_shutdown():
         # Grab a timestamp for the current loop iteration
         t = rospy.Time.now()
+        if t_old is not None:
+            #should probably also publish battery voltage here....
 
-        # Calculate time since last loop iteration
-        dt = t - t_old
-        #rospy.loginfo("dt: %s", dt.to_sec())
 
-        # Read the encoders, catch occasional I/O Errors
-        try:
-            encoders = r.read_encoders()
-        except OSError:
-            rospy.logwarn("Remote I/O error")
+            # Calculate time since last loop iteration
+            dt = t - t_old
+            # rospy.loginfo("dt: %s", dt.to_sec())
 
-        # Convert encoder ticks to wheel distance travelled since startup
-        left_wheel_cur_pos, right_wheel_cur_pos = [encoder*meters_per_count for encoder in encoders]
-        #rospy.loginfo("Left: %s, Right: %s", left_wheel_cur_pos, right_wheel_cur_pos)
+            # Read the encoders, catch occasional I/O Errors
+            # If we get an I/O error, we should abort this loop iteration
+            try:
+                encoders = romi.read_encoders()
 
-        # Estimate per wheel velocities
-        left_wheel_est_vel = (left_wheel_cur_pos - left_wheel_old_pos)/dt.to_sec()
-        right_wheel_est_vel = (right_wheel_cur_pos - right_wheel_old_pos)/dt.to_sec()
-        #rospy.loginfo("Left Vel: %s, Right Vel: %s", left_wheel_est_vel, right_wheel_est_vel)
+                # Update the old encoder values with current values
+                old_encoders = encoders
+            except OSError:
+                rospy.logwarn("Remote I/O error.")
+                # Just read again to flush the bad reading.
+                romi.read_encoders()
+                # read out the encoder values, which should be fine again.
+                encoders = romi.read_encoders()
+                # If we have an IO error, we need to ignore the values we're reading.  Use the values from the last iteration for stability.
+                io_error = 0
 
-        # Estimate vehicle motion based on wheel velocities
-        linear_vel = (right_wheel_est_vel + left_wheel_est_vel) *0.5
-        angular_vel  = (right_wheel_est_vel - left_wheel_est_vel) / wheelbase
+            # rospy.logwarn("IO ERROR: %s", io_error)
+            # Convert encoder ticks to wheel distance travelled since startup
+            left_wheel_cur_pos, right_wheel_cur_pos = [encoder*meters_per_count for encoder in encoders]
+            if io_error < 3:
+                rospy.loginfo("--------------------------------------------------------------------------")
+                rospy.loginfo("Cycles since IO error: %s", io_error)
+                rospy.logwarn("Encoders: %s.  Old: %s", encoders, old_encoders)
+                rospy.loginfo("Left: %s, Right: %s", left_wheel_cur_pos, right_wheel_cur_pos)
 
-        rospy.loginfo("Linear Velocity: %s, Angular Velocity: %s", linear_vel, angular_vel)
+            # Estimate per wheel velocities
+            left_wheel_est_vel = (left_wheel_cur_pos - left_wheel_old_pos)/dt.to_sec()
+            right_wheel_est_vel = (right_wheel_cur_pos - right_wheel_old_pos)/dt.to_sec()
+            if io_error  < 3:
+                rospy.loginfo("Left Vel: %s, Right Vel: %s", left_wheel_est_vel, right_wheel_est_vel)
 
-        # Stuff into an odometry message and *shipit*
-        odom_msg = Odometry()
-        odom_msg.header.frame_id = base_frame_id
-        odom_msg.header.stamp = rospy.Time.now()
+            # Estimate vehicle motion based on wheel velocities
+            linear_vel = (right_wheel_est_vel + left_wheel_est_vel) *0.5
+            angular_vel  = (right_wheel_est_vel - left_wheel_est_vel) / wheelbase
 
-        # Update the old timestamp and positions with current values
-        t_old = t 
-        left_wheel_old_pos = left_wheel_cur_pos
-        right_wheel_old_pos = right_wheel_cur_pos
+            if io_error  < 3:
+                rospy.loginfo("Linear Velocity: %s, Angular Velocity: %s", linear_vel, 180*angular_vel/math.pi)
 
+            # Integrate wheel velocities into odometry estimate.  If our angular velocity is small, use 2nd order Runge Kuttta, otherwise integrate exactly
+            if abs(angular_vel) < 1e-6:
+                direction = -1*(heading + angular_vel*0.5)
+                x += linear_vel * math.cos(direction)
+                y += linear_vel * math.sin(direction)
+                heading += angular_vel
+            else:
+                heading_old = heading
+                r = linear_vel/angular_vel
+                heading += angular_vel
+                x +=  r * (math.sin(heading) - math.sin(heading_old))
+                y += -r * (math.cos(heading) - math.cos(heading_old)) 
+
+            if io_error  < 3:
+                rospy.loginfo("X: %s, Y: %s, Heading: %s", x, y, heading*180/math.pi)
+
+            # Stuff into an odometry message and *shipit*
+            odom_msg = Odometry()
+            odom_msg.header.frame_id = base_frame_id
+            odom_msg.header.stamp = rospy.Time.now()
+
+            odom_msg.pose.pose.position.x = x
+            odom_msg.pose.pose.position.y = y
+
+            #rospy.loginfo("Quaternion: %s", quaternion_from_euler(0, 0, heading))
+
+            odom_msg.twist.twist.linear.x = linear_vel
+            odom_msg.twist.twist.angular.z = angular_vel
+
+            odom_pub.publish(odom_msg)
+
+            # Update the old positions with current values
+            left_wheel_old_pos = left_wheel_cur_pos
+            right_wheel_old_pos = right_wheel_cur_pos
+
+            io_error += 1
+        # Update the old timestamp with the current time.
+        t_old = t
         # Sleep for a bit.
         rate.sleep()
 
