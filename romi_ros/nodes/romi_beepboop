@@ -1,6 +1,0 @@
-#!/usr/bin/env python
-
-from romi_ros import Romi
-
-r = Romi()
-r.beepBoop()
