@@ -42,8 +42,8 @@ class RomiBase:
         self.heading = 0
 
         self.cmd_vel = Twist()
-        self.linear_pid = PID(Kp = 1.0, Ki = 0, Kd = 0.0, min = -200, max = 200)
-        self.angular_pid = PID(Kp = 1.0, Ki = 0, Kd = 0.0, min = -100, max = 100)
+        self.linear_pid = PID(Kp = 600.0, Ki = 100.0, Kd = 0.0, min_out = -200, max_out = 200)
+        self.angular_pid = PID(Kp = 50.0, Ki = 0, Kd = 0.0, min_out = -100, max_out = 100)
 
     def run(self):
         while not rospy.is_shutdown():
@@ -126,10 +126,8 @@ class RomiBase:
         # between wheel responsivities, I'm not sure...
 
         # Update setpoints (should we be doing this in the callback?)
-        linear_vel_setpoint = self.cmd_vel.linear.x
-        angular_vel_setpoint = self.cmd_vel.angular.z
-        self.linear_pid.setpoint = linear_vel_setpoint
-        self.angular_pid.setpoint = angular_vel_setpoint
+        self.linear_pid.setpoint = self.cmd_vel.linear.x
+        self.angular_pid.setpoint = self.cmd_vel.angular.z
         
         # Calculate pid values using odom linear and angular velocities
         linear_drive = self.linear_pid(self.linear_vel, dt)
@@ -140,10 +138,11 @@ class RomiBase:
         right = linear_drive + angular_drive
 
         # Set the robot motor levels
-        self.romi.motors(left, right)
+        self.romi.motors(int(left), int(right))
 
     def cmd_vel_callback(self, data):
         self.cmd_vel = data
+        rospy.loginfo("Recieved: %s"%data)
 
     def on_shutdown(self):
         rospy.logwarn("Romi Base Shutting Down")
