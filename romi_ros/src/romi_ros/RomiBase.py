@@ -133,12 +133,14 @@ class RomiBase:
         linear_drive = self.linear_pid(self.linear_vel, dt)
         angular_drive = self.angular_pid(self.angular_vel, dt)
 
-        # Conver pid values to differential drive levels
-        left = linear_drive - angular_drive
-        right = linear_drive + angular_drive
+        # Make sure we have values to write
+        if linear_drive is not None and angular_drive is not None:
+            # Conver pid values to differential drive levels
+            left = linear_drive - angular_drive
+            right = linear_drive + angular_drive
 
-        # Set the robot motor levels
-        self.romi.motors(int(left), int(right))
+            # Set the robot motor levels
+            self.romi.motors(int(left), int(right))
 
     def cmd_vel_callback(self, data):
         self.cmd_vel = data
