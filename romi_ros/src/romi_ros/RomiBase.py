@@ -6,7 +6,7 @@ from nav_msgs.msg import Odometry
 from std_msgs.msg import Float32
 from tf.transformations import quaternion_from_euler
 
-from romi_ros import Romi
+from romi_ros import Romi, PID
 
 class RomiBase:
     def __init__(self, nh):
@@ -41,6 +41,10 @@ class RomiBase:
         self.y = 0
         self.heading = 0
 
+        self.cmd_vel = Twist()
+        self.linear_pid = PID(Kp = 1.0, Ki = 0, Kd = 0.0, min = -200, max = 200)
+        self.angular_pid = PID(Kp = 1.0, Ki = 0, Kd = 0.0, min = -100, max = 100)
+
     def run(self):
         while not rospy.is_shutdown():
             self.loop()
@@ -60,6 +64,8 @@ class RomiBase:
             encoders = self.romi.read_encoders()
 
             self.calculate_odometry(encoders, dt)
+
+            self.motor_pid(dt)
 
         # Update the old timestamp with the current time.
         self.t_old = t
@@ -112,9 +118,33 @@ class RomiBase:
         self.left_wheel_old_pos = left_wheel_cur_pos
         self.right_wheel_old_pos = right_wheel_cur_pos
 
+    def motor_pid(self, dt):
+        # This is a pid loop which uses the cmd_vel and odom velocities
+        # I'm not sure if it's better to pid off of these directly or to
+        # compute the appropriate wheel speeds and pid them individually
+        # but this seems easier and perhaps more tolerant to differences
+        # between wheel responsivities, I'm not sure...
 
-    def cmd_vel_callback(self):
-        return True
+        # Update setpoints (should we be doing this in the callback?)
+        linear_vel_setpoint = self.cmd_vel.linear.x
+        angular_vel_setpoint = self.cmd_vel.angular.z
+        self.linear_pid.setpoint = linear_vel_setpoint
+        self.angular_pid.setpoint = angular_vel_setpoint
+        
+        # Calculate pid values using odom linear and angular velocities
+        linear_drive = self.linear_pid(self.linear_vel, dt)
+        angular_drive = self.angular_pid(self.angular_vel, dt)
+
+        # Conver pid values to differential drive levels
+        left = linear_drive - angular_drive
+        right = linear_drive + angular_drive
+
+        # Set the robot motor levels
+        self.romi.motors(left, right)
+
+    def cmd_vel_callback(self, data):
+        self.cmd_vel = data
 
     def on_shutdown(self):
         rospy.logwarn("Romi Base Shutting Down")
+        self.cmd_vel_sub.unregister()
