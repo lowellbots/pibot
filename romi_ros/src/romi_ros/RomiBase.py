@@ -45,6 +45,9 @@ class RomiBase:
         self.linear_pid = PID(Kp = 600.0, Ki = 100.0, Kd = 0.0, min_out = -200, max_out = 200)
         self.angular_pid = PID(Kp = 50.0, Ki = 0, Kd = 0.0, min_out = -100, max_out = 100)
 
+        self.encoders_wraps = (0, 0)
+        self.encoders_old = (0, 0)
+
     def run(self):
         while not rospy.is_shutdown():
             self.loop()
@@ -62,6 +65,21 @@ class RomiBase:
 
             # Grab current encoder counts
             encoders = self.romi.read_encoders()
+
+            # Check for int_16 overflow and unwrap
+            for encoder, encoder_old, encoder_wrap in zip(encoders, self.encoders_old, self.encoders_wraps):
+                d_encoder = encoder - encoder_old
+                if d_encoder < -32768:
+                    encoder_wrap += 1
+                elif d_encoder > 32768:
+                    encoder_wrap -= 1
+            
+            # Store encoders for unwrapping
+            self.encoders_old = encoders
+
+            # Unwrap encoders
+            for encoder, encoder_wrap in zip(encoders, self.encoders_wraps):
+                encoder += encoder_wrap * 65,536
 
             self.calculate_odometry(encoders, dt)
 
