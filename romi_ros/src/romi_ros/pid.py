@@ -11,6 +11,7 @@ class PID:
 
         self.integral = 0.0
         self.pv_old = None
+        self.last_output = 0
 
     def __call__(self, pv, dt):
         # Calculate error
@@ -36,6 +37,10 @@ class PID:
         # calculate output, clamp, and return
         output = proportional + self.integral + derrivative
         output = clamp(output, self.max, self.min)
+        
+        # smooth output
+        output = output*0.1 + self.last_output*0.9
+        self.last_output = output
         return output
 
 def clamp(value, max_val, min_val=0.0):
