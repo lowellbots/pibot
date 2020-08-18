@@ -42,7 +42,7 @@ class RomiBase:
         self.heading = 0
 
         self.cmd_vel = Twist()
-        self.linear_pid = PID(Kp = 600.0, Ki = 100.0, Kd = 0.0, min_out = -200, max_out = 200)
+        self.linear_pid = PID(Kp = 300.0, Ki = 600.0, Kd = -100.0, min_out = -200, max_out = 200)
         self.angular_pid = PID(Kp = 50.0, Ki = 0, Kd = 0.0, min_out = -100, max_out = 100)
 
         self.encoders_wraps = [0, 0]
