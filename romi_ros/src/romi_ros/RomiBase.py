@@ -79,7 +79,7 @@ class RomiBase:
 
             # Unwrap encoders
             for encoder, encoder_wrap in zip(encoders, self.encoders_wraps):
-                encoder += encoder_wrap * 65,536
+                encoder += encoder_wrap * 65536
 
             self.calculate_odometry(encoders, dt)
 
