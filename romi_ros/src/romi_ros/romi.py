@@ -4,6 +4,7 @@
 import smbus
 import struct
 import time
+import sys
 import collections
 
 class Regs(object):
@@ -20,6 +21,7 @@ class LSM6(object):
   def __init__(self, slave_addr = 0b1101011):
     self.bus = smbus.SMBus(1)
     self.sa = slave_addr
+    self.python_version = sys.version_info.major
     self.g = Vector(0, 0, 0)
     self.a = Vector(0, 0, 0)
       
@@ -30,10 +32,16 @@ class LSM6(object):
 
   def read_gyro(self):
     byte_list = self.bus.read_i2c_block_data(self.sa, Regs.OUTX_L_G, 6)
+    if self.python_version == 2:
+        # Python version 2
+        byte_list = bytearray(byte_list)
     self.g = Vector(*struct.unpack('hhh', bytes(byte_list)))
 
   def read_accel(self):
     byte_list = self.bus.read_i2c_block_data(self.sa, Regs.OUTX_L_XL, 6)
+    if self.python_version == 2:
+        # Python version 2
+        byte_list = bytearray(byte_list)
     self.a = Vector(*struct.unpack('hhh', bytes(byte_list)))
 
   def read(self):
@@ -43,6 +51,7 @@ class LSM6(object):
 class Romi:
   def __init__(self):
     self.bus = smbus.SMBus(1)
+    self.python_version = sys.version_info.major
     self.imu = LSM6()
 
   def read_unpack(self, address, size, format):
@@ -59,10 +68,16 @@ class Romi:
     self.bus.write_byte(20, address)
     time.sleep(0.0001)
     byte_list = [self.bus.read_byte(20) for _ in range(size)]
+    if self.python_version == 2:
+        # Python version 2
+        byte_list = bytearray(byte_list)
     return struct.unpack(format, bytes(byte_list))
 
   def write_pack(self, address, format, *data):
     data_array = list(struct.pack(format, *data))
+    if self.python_version == 2:
+        # Python version 2
+        data_array = [ord(char) for char in  data_array]
     self.bus.write_i2c_block_data(20, address, data_array)
     time.sleep(0.0001)
 
