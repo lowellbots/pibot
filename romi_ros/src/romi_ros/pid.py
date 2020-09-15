@@ -47,6 +47,9 @@ class PID:
         self.last_output = output
         return output, (feed_forward, proportional, self.integral, derivative)
 
+    def zero_integrator(self):
+        self.integral = 0
+
 def clamp(value, max_val, min_val=0.0):
     if max_val is not None and value > max_val:
         return max_val

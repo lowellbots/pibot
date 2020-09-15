@@ -23,6 +23,9 @@ class RomiBase:
         self.encoder_cpr = rospy.get_param('encoder/counts_per_rev', 12.0*120.0) #number of encoder counts *per wheel revolution*
         self.meters_per_count = self.wheel_circumference / self.encoder_cpr #distance a point on the diameter of the wheel would travel per encoder count
 
+        # Should probably initialize last command timestamp better than this..... meh.
+        self.last_command_timestamp = rospy.Time.from_sec(0)
+
         # Encoder directions:
         # +1 means an increase in encoder tick represents the wheel rotating toward the front of the chassis
         self.left_encoder_direction = rospy.get_param('encoder/left/direction', 1)
@@ -40,6 +43,10 @@ class RomiBase:
         self.angular_ki = rospy.get_param('base/angular/ki',10.)
         self.angular_kd = rospy.get_param('base/angular/kd',0.)
         self.angular_limit = rospy.get_param('base/angular/limit',100)
+
+        # Command watchdog timeout
+        command_timeout = rospy.get_param('base/command_timeout', .1)
+        self.command_timeout = rospy.Duration.from_sec(command_timeout)
 
         self.cmd_vel_sub = rospy.Subscriber("cmd_vel", Twist, self.cmd_vel_callback)
         self.odom_pub = rospy.Publisher("odom", Odometry, queue_size=1) 
@@ -76,6 +83,7 @@ class RomiBase:
         
         t = rospy.Time.now()
         #should probably also publish battery voltage here....
+        
 
         #If we have an old timestamp from which to calculate dt
         if self.t_old is not None:
@@ -100,7 +108,7 @@ class RomiBase:
 
             self.calculate_odometry(tuple(encoders), dt)
             
-            self.control_motors(dt)
+            self.control_motors(t, dt)
 
         # Update the old timestamp with the current time.
         self.t_old = t
@@ -153,7 +161,7 @@ class RomiBase:
         self.left_wheel_old_pos = left_wheel_cur_pos
         self.right_wheel_old_pos = right_wheel_cur_pos
 
-    def control_motors(self, dt):
+    def control_motors(self, t, dt):
         # This is a pid loop which uses the cmd_vel and odom velocities
         # I'm not sure if it's better to pid off of these directly or to
         # compute the appropriate wheel speeds and pid them individually
@@ -190,6 +198,16 @@ class RomiBase:
         self.pid_contributions_linear_pub.publish(lpc)
         self.pid_contributions_angular_pub.publish(apc)
 
+        # If we haven't received a command recently, we probably shouldn't drive the motors at all.
+        time_since_last_command = t - self.last_command_timestamp
+        
+        if time_since_last_command > self.command_timeout:
+            # zero integrators
+            self.linear_pid.zero_integrator()
+            self.angular_pid.zero_integrator()
+            # send zero commands
+            self.romi.motors(0, 0)
+
         # Make sure we have values to write
         if linear_drive is not None and angular_drive is not None:
             # Conver pid values to differential drive levels
@@ -200,6 +218,7 @@ class RomiBase:
             self.romi.motors(int(left), int(right))
 
     def cmd_vel_callback(self, data):
+        self.last_command_timestamp = rospy.Time.now()
         self.cmd_vel = data
         rospy.loginfo("Recieved: %s"%data)
 
