@@ -24,8 +24,8 @@ public:
 	}
 
 private:
-	static std::string gstreamer_pipeline (int capture_width, int capture_height, int display_width, int display_height, int framerate, int flip_method) {
-		return "nvarguscamerasrc ! video/x-raw(memory:NVMM), width=(int)" + std::to_string(capture_width) + ", height=(int)" +
+	static std::string gstreamer_pipeline (int sensor_id, int capture_width, int capture_height, int display_width, int display_height, int framerate, int flip_method) {
+		return "nvarguscamerasrc sensor_id=" + std::to_string(sensor_id) + " ! video/x-raw(memory:NVMM), width=(int)" + std::to_string(capture_width) + ", height=(int)" +
 		       std::to_string(capture_height) + ", format=(string)NV12, framerate=(fraction)" + std::to_string(framerate) +
 		       "/1 ! nvvidconv flip-method=" + std::to_string(flip_method) + " ! video/x-raw, width=(int)" + std::to_string(display_width) + ", height=(int)" +
 		       std::to_string(display_height) + ", format=(string)BGRx ! videoconvert ! video/x-raw, format=(string)BGR ! appsink";
@@ -33,6 +33,7 @@ private:
 
 	ros::NodeHandle nh_, nh_priv_;
 	image_transport::CameraPublisher pub_;
+	int sensor_id_;
 	int cap_width_, cap_height_;
 	int width_, height_, framerate_;
 	int flip_method_;
@@ -50,6 +51,8 @@ private:
 
 		image_transport::ImageTransport it(nh_);
 		image_transport::ImageTransport it_priv(nh_priv_);
+
+		sensor_id_ = nh_priv_.param<int>("sensor_id", 0);
 
 		cap_width_ = nh_priv_.param<int>("cap_width", 1280);
 		cap_height_ = nh_priv_.param<int>("cap_height", 720);
@@ -104,7 +107,7 @@ private:
 
 	void captureFunc()
 	{
-		std::string pipeline = gstreamer_pipeline(cap_width_, cap_height_, width_, height_, framerate_, flip_method_);
+		std::string pipeline = gstreamer_pipeline(sensor_id_, cap_width_, cap_height_, width_, height_, framerate_, flip_method_);
 		NODELET_INFO("Pipeline: %s", pipeline.c_str());
 		cv::VideoCapture cap(pipeline, cv::CAP_GSTREAMER);
 		cv_bridge::CvImage img;
